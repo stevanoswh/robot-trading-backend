@@ -1,136 +1,132 @@
-# Trading‑Simulator
+# Backend Trading‑Simulator (Node.js + Express)
 
-Aplikasi sederhana untuk **menguji strategi crypto** berbasis indikator **DMI / ADX**.
-
-* **Backend** : Node + Express (file orders.json sebagai "database")
-* **Frontend** : Next.js 14 + Tailwind (form konfigurasi + log order)
-* **Webhook** : Alert TradingView ➜ /webhook ➜ simulasi BUY / SELL
+Dokumentasi singkat, praktis, dan berbahasa **Indonesia** untuk backend yang menerima sinyal TradingView, mengambil harga dari Binance Testnet, mensimulasikan order beserta TP/SL & leverage, lalu menyimpan log‑nya.
 
 ---
+## 1. Ringkasan Teknologi
+| Lapisan | Library | Fungsi |
+|---------|---------|--------|
+| Routing | **Express 4** | Endpoint `/config`, `/webhook`, `/orders` |
+| Validasi | **Joi 17** | Memastikan payload & config benar |
+| Service  | **Axios** | Panggil API Binance & logika strategi |
+| Penyimpanan | `fs/promises` | Simpan config dan orders ke file JSON |
+| Env | **dotenv** | Baca variabel lingkungan |
 
-## 1. Fitur Utama
-
-| Lapisan  | Fungsi                                                                                                                |
-| -------- | --------------------------------------------------------------------------------------------------------------------- |
-| Frontend | Form konfigurasi (symbol, timeframe, +DI, −DI, ADX, TP, SL, leverage) · Tampilan konfigurasi aktif · Tabel order live |
-| Backend  | API REST /config, /orders, /webhook · Tarik harga Binance Testnet · Hitung TP / SL · Simpan order                     |
-
----
-
-## 2. Prasyarat
-
-* Node >= 20
-* npm
-* Akun TradingView (Free cukup)
-
-> Jika ingin deploy Cloud Run ► butuh **gcloud CLI** (lihat bagian 6).
+Arsitektur mengikuti pola *Clean Architecture* (routes → controllers → services → repositories) agar mudah diuji dan dikembangkan.
 
 ---
+## 2. Struktur Folder
+```text
+backend/
+├─ src/
+│  ├─ app.js                # Inisialisasi Express
+│  ├─ server.js             # Jalankan & shutdown server
+│  ├─ config/defaultConfig.json  # Config strategi aktif
+│  ├─ controllers/*.js      # Logika HTTP
+│  ├─ routes/*.js           # Definisi endpoint
+│  ├─ services/*.js         # Logika bisnis (strategi, Binance)
+│  ├─ repositories/*.js     # Baca/tulis JSON
+│  ├─ utils/*.js            # Helper perhitungan & validasi
+│  └─ middlewares/errorHandler.js
+├─ models/orders.json       # File log order (dibuat otomatis)
+├─ .env.example             # Contoh env
+└─ package.json             # Dependensi & script
+```
 
-## 3. Jalankan Lokal
-
+---
+## 3. Instalasi Cepat
 ```bash
-# kloning repo
+# clone repo
 $ git clone <repo-url>
-$ cd trading-simulator
+$ cd trading-simulator-backend
 
-# install dependensi
-$ (cd backend  && npm install)
-$ (cd frontend && npm install)
+# pasang dependensi
+$ npm install
 
-# salin env contoh
-$ cp backend/.env.example  backend/.env
-$ cp frontend/.env.example frontend/.env.local
+# salin & edit env
+$ cp .env.example .env      # ubah PORT / BINANCE_TESTNET_URL jika perlu
 
-# jalankan backend
-$ cd backend && npm run dev
-# jalankan frontend di terminal lain
-$ cd frontend && npm run dev
+# jalankan mode dev (reload otomatis)
+$ npm run dev               # http://localhost:4000
 ```
 
-Buka [http://localhost:3000](http://localhost:3000) – isi formulir, simpan, lihat tabel order.
+---
+## 4. Variabel Lingkungan Penting (`.env`)
+| Nama | Default | Keterangan |
+|------|---------|------------|
+| `PORT` | `4000` | Port server |
+| `BINANCE_TESTNET_URL` | `https://testnet.binance.vision` | Endpoint harga spot |
+| `BINANCE_API_KEY` & `BINANCE_API_SECRET` | (kosong) | Hanya perlu bila ingin mengeksekusi order sungguhan di testnet |
 
 ---
+## 5. Endpoint API
+| Method & Path | Deskripsi Singkat |
+|---------------|-------------------|
+| **POST `/config`** | Simpan / perbarui parameter strategi |
+| **GET  `/config`** | Ambil config aktif |
+| **POST `/webhook`** | Terima sinyal TradingView, validasi, hitung TP/SL, log order |
+| **GET  `/orders`** | Ambil seluruh order simulasi |
 
-## 4. Menghubungkan TradingView
-
-1. **Webhook URL** : `http://localhost:4000/webhook?token=verySecret`
-   (ganti domain produksi setelah deploy)
-2. **Pesan (Message)** :
-
+### Payload Contoh
+**POST `/config`**
 ```json
 {
   "symbol": "BTCUSDT",
-  "plusDI": {{plot_0}},
-  "minusDI": {{plot_1}},
-  "adx": {{plot_2}},
-  "timeframe": "15m"
+  "timeframe": "5m",
+  "plusDIThreshold": 25,
+  "minusDIThreshold": 20,
+  "adxMinimum": 20,
+  "takeProfitPercent": 2,
+  "stopLossPercent": 1,
+  "leverage": 10
 }
 ```
 
-3. Buat dua alert (BUY & SELL) memakai indikator DMI atau skrip PineScript.
-4. Saat kondisi terpenuhi, TradingView mengirim POST → backend → order muncul.
-
-> **Plan gratis** : biarkan tab chart terbuka agar alert aktif.
-
----
-
-## 5. End‑point API
-
-| Method | URL              | Kegunaan                            |
-| ------ | ---------------- | ----------------------------------- |
-| GET    | /config          | Ambil konfigurasi aktif             |
-| POST   | /config          | Simpan konfigurasi baru (JSON body) |
-| GET    | /orders          | Daftar order simulasi               |
-| POST   | /webhook?token=… | Dipanggil oleh TradingView          |
-
-Contoh order tersimpan:
-
+**POST `/webhook`**
 ```json
 {
   "symbol": "BTCUSDT",
-  "action": "BUY",
-  "price_entry": "27123.12",
-  "tp_price": "27665.58",
-  "sl_price": "26851.89",
-  "leverage": "10x",
-  "timeframe": "15m",
-  "timestamp": "2025-06-09T01:23:45Z"
+  "plusDI": 27.5,
+  "minusDI": 15,
+  "adx": 25,
+  "timeframe": "5m"
 }
 ```
 
 ---
+## 6. Alur `/webhook`
+1. **Validasi** payload dengan Joi.
+2. **Bandingkan** nilai +DI/–DI/ADX dengan ambang batas pada config.
+3. Jika BUY/SELL:
+   * Ambil harga terkini dari Binance Testnet.
+   * Hitung `tp_price` dan `sl_price` (rumus: `entry ± persen`).
+   * Simpan objek order ke `models/orders.json`.
+4. Balikkan respons `201 Created` berisi data order.
+5. Jika tidak memenuhi syarat ➜ `200 OK` pesan "Signal diabaikan".
 
-## 6. Deploy Cepat (Cloud Run + Vercel)
-
-### Backend – Cloud Run (tanpa Dockerfile)
-
+---
+## 7. Contoh cURL
 ```bash
-# dari folder backend
-$ gcloud run deploy tsim-api \
-    --source . \
-    --region us-central1 \
-    --allow-unauthenticated \
-    --set-env-vars \
-        BINANCE_TESTNET_URL=https://testnet.binance.vision,\
-        TV_TOKEN=verySecret,\
-        FRONTEND_ORIGIN=https://trading-sim.vercel.app
+# simpan konfigurasi
+curl -X POST http://localhost:4000/config \
+  -H 'Content-Type: application/json' \
+  -d '{"symbol":"BTCUSDT","timeframe":"5m","plusDIThreshold":25,"minusDIThreshold":20,"adxMinimum":20,"takeProfitPercent":2,"stopLossPercent":1,"leverage":10}'
+
+# kirim sinyal BUY
+curl -X POST http://localhost:4000/webhook \
+  -H 'Content-Type: application/json' \
+  -d '{"symbol":"BTCUSDT","plusDI":30,"minusDI":10,"adx":28,"timeframe":"5m"}'
+
+# lihat order yang tersimpan
+curl http://localhost:4000/orders | jq
 ```
 
-### Frontend – Vercel
-
-* Import repo `frontend/`
-* Env: `NEXT_PUBLIC_API_BASE=https://tsim-api-uc.a.run.app`
-* Deploy – dapat URL mis. `https://trading-sim.vercel.app`
-
-Perbarui `FRONTEND_ORIGIN` di Cloud Run jika URL berubah.
+---
+## 8. Langkah Berikutnya (Opsional)
+- Tambah **unit test** dengan Jest.
+- Ganti penyimpanan file ke database (MongoDB/PostgreSQL).
+- Deploy ke **Vercel, Render, Fly.io**, atau serverless (AWS Lambda).
+- Tambah autentikasi JWT & WebSocket untuk feed realtime.
 
 ---
-
-## 7. Lisensi
-
-MIT
-
----
-
-> **Ringkas:** Jalankan backend & frontend, tempel Webhook URL di TradingView, lihat order simulasi muncul otomatis. Selesai.
+Selamat mencoba! 🚀
