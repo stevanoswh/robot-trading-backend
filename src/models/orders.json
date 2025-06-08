@@ -1,0 +1,22 @@
+[
+  {
+    "symbol": "BTCUSDT",
+    "action": "SELL",
+    "price_entry": "105630.94",
+    "tp_price": "107743.56",
+    "sl_price": "104257.74",
+    "leverage": "10x",
+    "timeframe": "15m",
+    "timestamp": "2025-06-08T12:35:59.817Z"
+  },
+  {
+    "symbol": "BTCUSDT",
+    "action": "SELL",
+    "price_entry": "105602.69",
+    "tp_price": "107714.74",
+    "sl_price": "104229.86",
+    "leverage": "10x",
+    "timeframe": "15m",
+    "timestamp": "2025-06-08T12:38:24.604Z"
+  }
+]
