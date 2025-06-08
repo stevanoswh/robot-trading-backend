@@ -1,7 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-const ORDERS_PATH = path.resolve('src', 'models', 'orders.json');
+const ORDERS_PATH = path.resolve('/tmp', 'orders.json'); // ✅ ganti path ke /tmp
 
 const ensureFile = async () => {
   try {
